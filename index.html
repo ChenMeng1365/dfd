@@ -457,10 +457,10 @@ function renderServices() {
       ${svcStatusHtml(s)}
       <div class="svc-url" title="${escapeHtml(s.url || '')}">${escapeHtml(s.url || '未配置首页地址')}</div>
       <div class="svc-actions">
-        <a class="svc-btn ${s.status && s.status.online ? 'online' : ''}" ${s.url ? `href="${escapeHtml(s.url)}" target="_blank" rel="noopener"` : ''}
-           data-act="open" data-name="${escapeHtml(s.name)}" ${s.url ? '' : 'disabled title="未配置首页地址"'}>↗ 打开</a>
-        <button class="svc-btn primary" data-act="start" data-name="${escapeHtml(s.name)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'}>▶ 启动</button>
-        <button class="svc-btn" data-act="config" data-name="${escapeHtml(s.name)}">⚙ 配置</button>
+        <button class="svc-btn ${s.status && s.status.online ? 'online' : ''}" data-act="open" data-name="${escapeHtml(s.name)}" ${s.url ? `data-url="${escapeHtml(s.url)}"` : 'disabled title="未配置首页地址"'} title="打开">↗</button>
+        <button class="svc-btn" data-act="open-folder" data-name="${escapeHtml(s.name)}" title="打开文件夹">📂</button>
+        <button class="svc-btn primary" data-act="start" data-name="${escapeHtml(s.name)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'} title="启动">▶</button>
+        <button class="svc-btn" data-act="config" data-name="${escapeHtml(s.name)}" title="配置">⚙</button>
       </div>
     </div>`).join('');
 }
@@ -473,21 +473,35 @@ svcGrid.addEventListener('click', async e => {
   if (!svc) return;
 
   if (btn.dataset.act === 'config') {
-    openConfigModal(svc);
+    openConfig(svc);
+    return;
+  }
+  if (btn.dataset.act === 'open') {
+    if (!svc.url) { alert('未配置首页地址，请点击 ⚙ 配置'); return; }
+    window.open(svc.url, '_blank', 'noopener');
+    return;
+  }
+  if (btn.dataset.act === 'open-folder') {
+    try {
+      const res = await api(`/api/services/${encodeURIComponent(name)}/open-folder`, { method: 'POST' });
+      if (!res.ok) alert('打开文件夹失败：' + (res.error || '未知错误'));
+    } catch (err) {
+      alert('打开文件夹失败：' + err.message);
+    }
     return;
   }
   if (btn.dataset.act === 'start') {
     btn.disabled = true;
-    btn.textContent = '▶ 启动中…';
+    btn.textContent = '⏳';
     try {
       const res = await api(`/api/services/${encodeURIComponent(name)}/start`, { method: 'POST' });
-      btn.textContent = '▶ 已启动';
+      btn.textContent = '✔';
       await probeServices();
     } catch (err) {
-      btn.textContent = '▶ 失败';
+      btn.textContent = '✖';
       alert('启动失败：' + err.message);
     }
-    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 启动'; }, 1500);
+    setTimeout(() => { btn.disabled = false; btn.textContent = '▶'; }, 1500);
   }
 });
 

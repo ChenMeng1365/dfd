@@ -329,6 +329,35 @@ function startService(service) {
   });
 }
 
+// 在文件管理器中打开服务目录（Windows 资源管理器 / macOS Finder / Linux 文件管理器）
+function openServiceFolder(service) {
+  return new Promise((resolve) => {
+    const dir = service.dir;
+    if (!fs.existsSync(dir)) {
+      return resolve({ ok: false, error: '目录不存在: ' + dir });
+    }
+    let cmd, args;
+    if (process.platform === 'win32') {
+      cmd = 'explorer.exe';
+      args = [dir];
+    } else if (process.platform === 'darwin') {
+      cmd = 'open';
+      args = [dir];
+    } else {
+      cmd = 'xdg-open';
+      args = [dir];
+    }
+    try {
+      const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+      child.on('error', (err) => resolve({ ok: false, error: err.message }));
+      child.unref();
+      resolve({ ok: true, message: '已请求打开文件夹' });
+    } catch (err) {
+      resolve({ ok: false, error: err.message });
+    }
+  });
+}
+
 // 保存服务配置（如首页地址）到其 manifest.json
 function saveServiceConfig(service, updates) {
   const manifestPath = path.join(service.dir, 'manifest.json');
@@ -444,6 +473,17 @@ const server = http.createServer(async (req, res) => {
     const service = scanServices().find(s => s.name === name);
     if (!service) { sendJson(res, { ok: false, error: '服务不存在: ' + name }, 404); return; }
     const result = await startService(service);
+    sendJson(res, result, result.ok ? 200 : 500);
+    return;
+  }
+
+  // 打开服务文件夹：POST /api/services/<name>/open-folder
+  const folderMatch = pathname.match(/^\/api\/services\/([^/]+)\/open-folder$/);
+  if (folderMatch && req.method === 'POST') {
+    const name = folderMatch[1];
+    const service = scanServices().find(s => s.name === name);
+    if (!service) { sendJson(res, { ok: false, error: '服务不存在: ' + name }, 404); return; }
+    const result = await openServiceFolder(service);
     sendJson(res, result, result.ok ? 200 : 500);
     return;
   }
