@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dfd · 单页应用集成门户</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>">
+<style>
+  :root {
+    --bg: #0f1115;
+    --bg-soft: #171a21;
+    --card: #1c2029;
+    --card-hover: #232936;
+    --border: #2a3040;
+    --text: #e6e9f0;
+    --text-dim: #9aa3b2;
+    --accent: #4f8cff;
+    --accent-soft: rgba(79, 140, 255, 0.12);
+    --danger: #e05252;
+    --ok: #3dbb7a;
+    --warn: #e0a33c;
+    --radius: 14px;
+    --shadow: 0 6px 24px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 500px at 20% -10%, rgba(79,140,255,0.10), transparent 60%),
+      radial-gradient(900px 400px at 90% 0%, rgba(120,80,255,0.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ---------- 头部 ---------- */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 22px;
+    background: rgba(15,17,21,0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap; }
+  .logo b { color: var(--accent); }
+  .search-box { flex: 1; max-width: 420px; position: relative; }
+  .search-box input {
+    width: 100%;
+    padding: 8px 14px 8px 36px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-dim); font-size: 14px; }
+  .header-info { margin-left: auto; font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+  .refresh-btn {
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid rgba(79,140,255,0.4);
+    padding: 6px 14px; border-radius: 999px; cursor: pointer;
+    font-size: 13px; transition: background .15s;
+  }
+  .refresh-btn:hover { background: rgba(79,140,255,0.22); }
+  .refresh-btn:disabled { opacity: .5; cursor: default; }
+
+  /* ---------- 标签栏 ---------- */
+  .tags-bar {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 12px 22px 4px;
+  }
+  .tag {
+    padding: 5px 14px; border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    color: var(--text-dim);
+    font-size: 13px; cursor: pointer;
+    transition: all .15s;
+    user-select: none;
+  }
+  .tag:hover { color: var(--text); border-color: var(--text-dim); }
+  .tag.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* ---------- 主区 ---------- */
+  main { padding: 18px 22px 40px; }
+
+  .section {
+    margin-bottom: 30px;
+  }
+  .section-head {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 14px;
+  }
+  .section-title {
+    font-size: 16px; font-weight: 700; letter-spacing: 0.5px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title .count { font-size: 12px; color: var(--text-dim); font-weight: 400; }
+  .probe-btn {
+    margin-left: auto;
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid rgba(79,140,255,0.4);
+    padding: 6px 14px; border-radius: 999px; cursor: pointer;
+    font-size: 13px; transition: background .15s;
+  }
+  .probe-btn:hover { background: rgba(79,140,255,0.22); }
+  .probe-btn:disabled { opacity: .5; cursor: default; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    position: relative;
+    text-decoration: none;
+    color: inherit;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    cursor: pointer;
+    transition: transform .15s, border-color .15s, background .15s, box-shadow .15s;
+    display: flex; flex-direction: column; gap: 10px;
+    overflow: hidden;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent);
+    background: var(--card-hover);
+    box-shadow: var(--shadow);
+  }
+  .card-head { display: flex; align-items: center; gap: 12px; }
+  .card-icon {
+    width: 44px; height: 44px; flex-shrink: 0;
+    border-radius: 10px;
+    background: var(--bg-soft);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .card-icon img { width: 100%; height: 100%; object-fit: cover; }
+  .card-title { font-size: 16px; font-weight: 600; line-height: 1.3; }
+  .card-desc {
+    font-size: 13px; color: var(--text-dim); line-height: 1.6;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    flex: 1;
+  }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .card-tags span {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .card-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-dim); }
+  .card-badge {
+    position: absolute; top: 12px; right: 12px;
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: rgba(224,82,82,0.15); color: var(--danger);
+    border: 1px solid rgba(224,82,82,0.3);
+  }
+
+  /* ---------- 服务卡片 ---------- */
+  .svc-card {
+    position: relative;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    display: flex; flex-direction: column; gap: 10px;
+    transition: border-color .15s, background .15s;
+  }
+  .svc-card:hover { border-color: var(--border); background: var(--card-hover); }
+  .svc-head { display: flex; align-items: center; gap: 12px; }
+  .svc-name { font-size: 15px; font-weight: 600; }
+  .svc-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; min-height: 18px; }
+
+  .status-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.online { background: var(--ok); box-shadow: 0 0 8px rgba(61,187,122,0.8); }
+  .status-dot.offline { background: var(--danger); box-shadow: 0 0 8px rgba(224,82,82,0.8); }
+  .status-dot.unknown { background: var(--warn); box-shadow: 0 0 8px rgba(224,163,60,0.8); }
+  .status-text.online { color: var(--ok); }
+  .status-text.offline { color: var(--danger); }
+  .status-text.unknown { color: var(--warn); }
+  .svc-url { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .svc-actions { display: flex; gap: 8px; margin-top: 2px; }
+  .svc-btn {
+    padding: 5px 12px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-soft); color: var(--text);
+    font-size: 12px; cursor: pointer;
+    transition: all .15s;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
+  }
+  .svc-btn:hover { background: var(--card-hover); border-color: var(--text-dim); }
+  .svc-btn.primary { background: var(--accent-soft); color: var(--accent); border-color: rgba(79,140,255,0.4); }
+  .svc-btn.primary:hover { background: rgba(79,140,255,0.22); }
+  .svc-btn:disabled { opacity: .5; cursor: default; }
+  .svc-btn.online { color: var(--ok); border-color: rgba(61,187,122,0.4); }
+
+  .empty {
+    grid-column: 1 / -1;
+    text-align: center; padding: 40px 20px;
+    color: var(--text-dim);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+  .empty code { background: var(--bg-soft); padding: 2px 6px; border-radius: 4px; color: var(--accent); }
+
+  /* ---------- 配置弹窗 ---------- */
+  .modal-mask {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.55);
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal-mask.open { display: flex; }
+  .modal {
+    width: min(460px, 92vw);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px;
+    box-shadow: var(--shadow);
+  }
+  .modal h3 { font-size: 16px; margin-bottom: 16px; }
+  .modal label { display: block; font-size: 13px; color: var(--text-dim); margin: 12px 0 6px; }
+  .modal input[type="text"] {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+  }
+  .modal input[type="text"]:focus { border-color: var(--accent); }
+  .modal .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  .modal-btn {
+    padding: 7px 18px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-soft); color: var(--text);
+    font-size: 13px; cursor: pointer;
+  }
+  .modal-btn:hover { background: var(--card-hover); }
+  .modal-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .modal-msg { font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .modal-msg.err { color: var(--danger); }
+  .modal-msg.ok { color: var(--ok); }
+
+  /* 加载提示 */
+  .loading {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 40px; color: var(--text-dim); font-size: 14px;
+  }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 640px) {
+    .header-info { display: none; }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">dfd <b>·</b> 应用门户</div>
+  <div class="search-box">
+    <span class="icon">🔍</span>
+    <input id="search" type="text" placeholder="搜索应用…" autocomplete="off">
+  </div>
+  <button id="refresh" class="refresh-btn" title="重新扫描 projects/services 目录">↻ 刷新</button>
+  <div class="header-info" id="count-info"></div>
+</header>
+
+<div class="tags-bar" id="tags-bar"></div>
+
+<main>
+  <!-- 服务区：需自行启动的服务 -->
+  <section class="section">
+    <div class="section-head">
+      <div class="section-title">⚙️ 服务 <span class="count" id="svc-count"></span></div>
+      <button id="probe" class="probe-btn" title="探测所有服务状态">🔍 探测</button>
+    </div>
+    <div class="grid" id="svc-grid"></div>
+  </section>
+
+  <!-- 项目区 -->
+  <section class="section">
+    <div class="section-head">
+      <div class="section-title">🧩 应用 <span class="count" id="app-count"></span></div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+</main>
+
+<!-- 服务配置弹窗 -->
+<div class="modal-mask" id="modal">
+  <div class="modal">
+    <h3 id="modal-title">配置服务</h3>
+    <label for="cfg-name">显示名称</label>
+    <input type="text" id="cfg-name" placeholder="服务显示名称">
+    <label for="cfg-url">首页地址（用于探测与打开）</label>
+    <input type="text" id="cfg-url" placeholder="http://127.0.0.1:8080/">
+    <div class="hint">探测时会请求该地址判断服务是否在线；留空则不探测。</div>
+    <label for="cfg-script">启动脚本（services/&lt;名称&gt;/ 目录下）</label>
+    <input type="text" id="cfg-script" placeholder="start.bat">
+    <div class="modal-msg" id="cfg-msg"></div>
+    <div class="modal-actions">
+      <button class="modal-btn" id="cfg-cancel">取消</button>
+      <button class="modal-btn primary" id="cfg-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const grid = document.getElementById('grid');
+const svcGrid = document.getElementById('svc-grid');
+const search = document.getElementById('search');
+const tagsBar = document.getElementById('tags-bar');
+const countInfo = document.getElementById('count-info');
+const refreshBtn = document.getElementById('refresh');
+const probeBtn = document.getElementById('probe');
+
+let projects = [];
+let services = [];
+let activeTag = 'all';
+let editingService = null;
+
+/* ---------- 通用 ---------- */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function iconHtml(icon) {
+  if (icon && icon.type === 'image') {
+    return `<img src="${escapeHtml(icon.value)}" alt="">`;
+  }
+  return escapeHtml((icon && icon.value) || '📦');
+}
+
+async function api(url, options) {
+  const res = await fetch(url, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
+  return data;
+}
+
+/* ---------- 项目渲染 ---------- */
+function allTags() {
+  const set = new Set();
+  projects.forEach(p => (p.tags || []).forEach(t => set.add(t)));
+  return [...set].sort();
+}
+
+function renderTags() {
+  const tags = allTags();
+  let html = `<span class="tag ${activeClass('all')}" data-tag="all">全部</span>`;
+  tags.forEach(t => {
+    html += `<span class="tag ${activeClass(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</span>`;
+  });
+  tagsBar.innerHTML = html;
+}
+
+function activeClass(tag) { return tag === activeTag ? 'active' : ''; }
+
+function filtered() {
+  const q = search.value.trim().toLowerCase();
+  return projects.filter(p => {
+    if (activeTag !== 'all' && !(p.tags || []).includes(activeTag)) return false;
+    if (!q) return true;
+    return (p.title + ' ' + p.name + ' ' + (p.description || '') + ' ' + (p.tags || []).join(' '))
+      .toLowerCase().includes(q);
+  });
+}
+
+function renderGrid() {
+  const list = filtered();
+  document.getElementById('app-count').textContent = `${list.length} / ${projects.length}`;
+
+  if (!projects.length) {
+    grid.innerHTML = `<div class="empty">📁 projects 目录为空<br><br>
+      将单页项目文件夹放入 <code>projects/</code>，点击右上角 <b>↻ 刷新</b> 即可自动集成。</div>`;
+    return;
+  }
+  if (!list.length) {
+    grid.innerHTML = `<div class="empty">🔍 没有匹配的应用，换个关键词或标签试试</div>`;
+    return;
+  }
+
+  grid.innerHTML = list.map(p => `
+    <a class="card" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">
+      ${p.entryExists ? '' : '<span class="card-badge">缺少入口文件</span>'}
+      <div class="card-head">
+        <div class="card-icon">${iconHtml(p.icon)}</div>
+        <div class="card-title">${escapeHtml(p.title)}</div>
+      </div>
+      <div class="card-desc">${escapeHtml(p.description || '暂无描述')}</div>
+      ${p.tags && p.tags.length ? `<div class="card-tags">${p.tags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+      <div class="card-meta">
+        <span>${escapeHtml(p.name)}</span>
+        <span>${escapeHtml(p.entry)}</span>
+      </div>
+    </a>`).join('');
+}
+
+/* ---------- 服务渲染 ---------- */
+function svcStatusHtml(s) {
+  const st = s.status || {};
+  let dot, text;
+  if (!s.url) {
+    dot = 'unknown'; text = '未配置地址';
+  } else if (st.online) {
+    dot = 'on'; text = `在线 · ${st.statusCode || ''} · ${st.latencyMs}ms`;
+  } else {
+    dot = 'offline'; text = `离线 · ${st.error || ''}`;
+  }
+  return `<div class="status-row">
+    <span class="status-dot ${dot}"></span>
+    <span class="status-text ${dot}">${escapeHtml(text)}</span>
+  </div>`;
+}
+
+function renderServices() {
+  document.getElementById('svc-count').textContent = `${services.length} 个`;
+
+  if (!services.length) {
+    svcGrid.innerHTML = `<div class="empty">⚙️ services 目录为空<br><br>
+      将需要自行启动的服务（含 <code>start.bat</code>）放入 <code>services/</code>，即可在此探测与启动。</div>`;
+    return;
+  }
+
+  svcGrid.innerHTML = services.map(s => `
+    <div class="svc-card">
+      <div class="svc-head">
+        <div class="card-icon">${iconHtml(s.icon)}</div>
+        <div class="svc-name">${escapeHtml(s.title)}</div>
+      </div>
+      <div class="svc-desc">${escapeHtml(s.description || '')}</div>
+      ${svcStatusHtml(s)}
+      <div class="svc-url" title="${escapeHtml(s.url || '')}">${escapeHtml(s.url || '未配置首页地址')}</div>
+      <div class="svc-actions">
+        <a class="svc-btn ${s.status && s.status.online ? 'online' : ''}" ${s.url ? `href="${escapeHtml(s.url)}" target="_blank" rel="noopener"` : ''}
+           data-act="open" data-name="${escapeHtml(s.name)}" ${s.url ? '' : 'disabled title="未配置首页地址"'}>↗ 打开</a>
+        <button class="svc-btn primary" data-act="start" data-name="${escapeHtml(s.name)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'}>▶ 启动</button>
+        <button class="svc-btn" data-act="config" data-name="${escapeHtml(s.name)}">⚙ 配置</button>
+      </div>
+    </div>`).join('');
+}
+
+svcGrid.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  const name = btn.dataset.name;
+  const svc = services.find(s => s.name === name);
+  if (!svc) return;
+
+  if (btn.dataset.act === 'config') {
+    openConfigModal(svc);
+    return;
+  }
+  if (btn.dataset.act === 'start') {
+    btn.disabled = true;
+    btn.textContent = '▶ 启动中…';
+    try {
+      const res = await api(`/api/services/${encodeURIComponent(name)}/start`, { method: 'POST' });
+      btn.textContent = '▶ 已启动';
+      await probeServices();
+    } catch (err) {
+      btn.textContent = '▶ 失败';
+      alert('启动失败：' + err.message);
+    }
+    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 启动'; }, 1500);
+  }
+});
+
+/* ---------- 探测 ---------- */
+async function probeServices() {
+  probeBtn.disabled = true;
+  probeBtn.textContent = '探测中…';
+  try {
+    const data = await api('/api/services');
+    services = data.services || [];
+  } catch (err) {
+    services = [];
+    svcGrid.innerHTML = `<div class="empty">⚠️ 探测失败：${escapeHtml(String(err.message || err))}</div>`;
+  }
+  renderServices();
+  probeBtn.textContent = '🔍 探测';
+  probeBtn.disabled = false;
+}
+
+/* ---------- 配置弹窗 ---------- */
+const modal = document.getElementById('modal');
+const cfgName = document.getElementById('cfg-name');
+const cfgUrl = document.getElementById('cfg-url');
+const cfgScript = document.getElementById('cfg-script');
+const cfgMsg = document.getElementById('cfg-msg');
+
+function openConfig(svc) {
+  editingService = svc;
+  document.getElementById('modal-title').textContent = `配置 · ${svc.title}`;
+  cfgName.value = svc.title;
+  cfgUrl.value = svc.url || '';
+  cfgScript.value = svc.startScript || 'start.bat';
+  cfgMsg.textContent = '';
+  cfgMsg.className = 'modal-msg';
+  modal.classList.add('open');
+}
+
+function closeConfig() {
+  modal.classList.remove('open');
+  editingService = null;
+}
+
+document.getElementById('cfg-cancel').addEventListener('click', closeConfig);
+modal.addEventListener('click', e => { if (e.target === modal) closeConfig(); });
+
+document.getElementById('cfg-save').addEventListener('click', async () => {
+  if (!editingService) return;
+  cfgMsg.textContent = '保存中…';
+  cfgMsg.className = 'modal-msg';
+  try {
+    await api(`/api/services/${encodeURIComponent(editingService.name)}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: cfgName.value.trim(),
+        url: cfgUrl.value.trim(),
+        startScript: cfgScript.value.trim() || 'start.bat',
+      }),
+    });
+    cfgMsg.textContent = '已保存';
+    cfgMsg.className = 'modal-msg ok';
+    closeConfig();
+    await probeServices();
+  } catch (err) {
+    cfgMsg.textContent = '保存失败：' + err.message;
+    cfgMsg.className = 'modal-msg err';
+  }
+});
+
+/* ---------- 事件 ---------- */
+search.addEventListener('input', renderGrid);
+
+tagsBar.addEventListener('click', e => {
+  const tagEl = e.target.closest('.tag');
+  if (!tagEl) return;
+  activeTag = tagEl.dataset.tag;
+  renderTags();
+  renderGrid();
+});
+
+refreshBtn.addEventListener('click', async () => {
+  refreshBtn.disabled = true;
+  refreshBtn.textContent = '↻ 刷新中…';
+  await init();
+  refreshBtn.textContent = '↻ 刷新';
+  refreshBtn.disabled = false;
+});
+
+probeBtn.addEventListener('click', probeServices);
+
+/* ---------- 数据加载 ---------- */
+async function loadProjects() {
+  grid.innerHTML = `<div class="loading"><span class="spinner"></span>正在扫描 projects 目录…</div>`;
+  try {
+    const data = await api('/api/projects');
+    projects = data.projects || [];
+  } catch (err) {
+    projects = [];
+    grid.innerHTML = `<div class="empty">⚠️ 加载失败：${escapeHtml(String(err.message || err))}</div>`;
+  }
+  renderTags();
+  renderGrid();
+}
+
+function updateCountInfo() {
+  countInfo.textContent = `${projects.length} 个应用 · ${services.length} 个服务`;
+}
+
+// 统一初始化：每次刷新页面都走这里，确保 projects 和 services 同时加载
+async function init() {
+  svcGrid.innerHTML = `<div class="loading"><span class="spinner"></span>正在加载服务…</div>`;
+  grid.innerHTML = `<div class="loading"><span class="spinner"></span>正在扫描 projects 目录…</div>`;
+
+  const [projResult, svcResult] = await Promise.allSettled([
+    api('/api/projects'),
+    api('/api/services'),
+  ]);
+
+  if (projResult.status === 'fulfilled') {
+    projects = projResult.value.projects || [];
+  } else {
+    projects = [];
+    grid.innerHTML = `<div class="empty">⚠️ 加载失败：${escapeHtml(String(projResult.reason?.message || projResult.reason))}</div>`;
+  }
+
+  if (svcResult.status === 'fulfilled') {
+    services = svcResult.value.services || [];
+  } else {
+    services = [];
+    svcGrid.innerHTML = `<div class="empty">⚠️ 探测失败：${escapeHtml(String(svcResult.reason?.message || svcResult.reason))}</div>`;
+  }
+
+  renderTags();
+  renderGrid();
+  renderServices();
+  updateCountInfo();
+}
+
+init();
+</script>
+</body>
+</html>

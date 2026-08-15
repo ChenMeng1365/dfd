@@ -1,0 +1,8 @@
+{
+  "name": "示例 API 服务",
+  "description": "一个需要在 services/ 中自行启动的服务示例：点击启动按钮会运行 start.bat，随后可探测其在线状态并打开首页。",
+  "icon": "🛠️",
+  "url": "http://127.0.0.1:9111/",
+  "startScript": "start.bat",
+  "tags": ["示例", "服务"]
+}
