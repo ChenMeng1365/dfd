@@ -1,13 +1,13 @@
 @echo off
 rem ============================================
-rem  dfd - Single Page Hub Launcher
-rem  Double-click to start, Ctrl+C to stop
+rem  dfd - Single Page Hub Launcher (后台静默版)
+rem  双击: 后台无窗口启动 node server.js
+rem  可选参数: start.bat 9090  (自定义端口)
+rem  日志: server.log   停止: stop.bat
+rem  想完全零闪窗: 直接双击 start-hidden.vbs
 rem ============================================
-setlocal enabledelayedexpansion
 cd /d "%~dp0"
-
-set PORT=8080
-if not "%1"=="" set PORT=%1
+set "PORT=%~1"
 
 where node >nul 2>nul
 if errorlevel 1 (
@@ -16,12 +16,5 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Starting dfd hub on port %PORT%...
-rem node server.js will auto-increment port if busy and open browser itself
-node server.js
-if errorlevel 1 (
-    echo.
-    echo Failed to start. Common cause: port in use.
-    echo Try: start.bat 9090
-)
-pause
+rem 经 wscript 中转, 以隐藏窗口运行 (mshta 在 Win11 新版已被禁用)
+wscript "%~dp0start-hidden.vbs" %PORT%
