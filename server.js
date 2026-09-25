@@ -23,6 +23,7 @@ const ROOT = __dirname;
 const PROJECTS_DIR = path.join(ROOT, 'projects');
 const SERVICES_DIR = path.join(ROOT, 'services');
 const INDEX_FILE = path.join(ROOT, 'index.html');
+const EXTERNAL_SERVICES_FILE = path.join(ROOT, 'external-services.json');
 const HOST = '127.0.0.1';
 const DEFAULT_PORT = 8080;
 
@@ -301,7 +302,51 @@ async function withStatus(service) {
 async function getServicesWithStatus() {
   const services = scanServices();
   const results = await Promise.all(services.map(withStatus));
-  return results.map(({ dir, ...rest }) => rest); // 不暴露本地目录路径
+  const cleaned = results.map(({ dir, ...rest }) => rest); // 不暴露本地目录路径
+
+  // 注入虚拟的「项目配置」服务：随 dfd 本体在线
+  const extList = readExternalServices();
+  const extCount = extList.length;
+  cleaned.unshift({
+    name: CONFIG_SERVICE_ID,
+    title: '项目配置',
+    description: `管理 dfd 项目外的服务启动配置${extCount ? `（${extCount} 个外部项目）` : ''}`,
+    icon: { type: 'emoji', value: '🎛️' },
+    url: `http://${HOST}:${actualPort}/`,
+    candidateUrls: [],
+    urlInferred: false,
+    startScript: '',
+    startExists: false,
+    tags: ['配置'],
+    isConfig: true,
+    status: { online: true, statusCode: 200, latencyMs: 0 },
+  });
+
+  // 追加外部服务（项目配置面板中配置的服务）到服务列表
+  const extResults = await Promise.all(extList.map(async (item) => {
+    const status = await checkUrl(item.url, 2500);
+    const startExists = item.path && item.startScript
+      ? fs.existsSync(path.join(item.path, item.startScript))
+      : false;
+    return {
+      name: 'ext:' + item.id,          // 带前缀避免与 services/ 目录名称冲突
+      extId: item.id,                  // 原始 id，前端用于调用外部服务 API
+      title: item.name || item.id,
+      description: item.description || '',
+      icon: { type: 'emoji', value: item.icon || '📦' },
+      url: item.url || '',
+      candidateUrls: [],
+      urlInferred: false,
+      startScript: item.startScript || '',
+      startExists,
+      tags: [],
+      isExternal: true,
+      status,
+    };
+  }));
+  cleaned.push(...extResults);
+
+  return cleaned;
 }
 
 /* ---------------- 服务操作 ---------------- */
@@ -373,6 +418,102 @@ function saveServiceConfig(service, updates) {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+/* ---------------- 外部服务（项目配置面板） ---------------- */
+
+// 虚拟服务 ID：用于在 /api/services 中注入「项目配置」特殊条目
+const CONFIG_SERVICE_ID = '__dfd_config__';
+
+function readExternalServices() {
+  try {
+    const data = JSON.parse(fs.readFileSync(EXTERNAL_SERVICES_FILE, 'utf8'));
+    return Array.isArray(data) ? data : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveExternalServices(list) {
+  try {
+    fs.writeFileSync(EXTERNAL_SERVICES_FILE, JSON.stringify(list, null, 2), 'utf8');
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function genId() {
+  return 'ext-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+// 获取外部服务列表（含状态探测），不暴露内部 id 以外的敏感字段
+async function getExternalServicesWithStatus() {
+  const list = readExternalServices();
+  const results = await Promise.all(list.map(async (item) => {
+    const status = await checkUrl(item.url, 2500);
+    const startExists = item.path && item.startScript
+      ? fs.existsSync(path.join(item.path, item.startScript))
+      : false;
+    return {
+      id: item.id,
+      name: item.name || item.id,
+      description: item.description || '',
+      icon: item.icon || '📦',
+      path: item.path || '',
+      startScript: item.startScript || '',
+      url: item.url || '',
+      startExists,
+      status,
+    };
+  }));
+  return results;
+}
+
+// 启动外部服务：在指定目录中运行启动脚本
+function startExternalService(item) {
+  return new Promise((resolve) => {
+    if (!item.path || !item.startScript) {
+      return resolve({ ok: false, error: '未配置路径或启动脚本' });
+    }
+    const dir = item.path;
+    if (!fs.existsSync(dir)) {
+      return resolve({ ok: false, error: '目录不存在: ' + dir });
+    }
+    const script = path.join(dir, item.startScript);
+    if (!fs.existsSync(script)) {
+      return resolve({ ok: false, error: '启动脚本不存在: ' + item.startScript });
+    }
+    try {
+      const child = spawn('cmd.exe', ['/c', 'start', '""', '/D', dir, item.startScript], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.on('error', (err) => resolve({ ok: false, error: err.message }));
+      child.unref();
+      resolve({ ok: true, message: '启动指令已发送' });
+    } catch (err) {
+      resolve({ ok: false, error: err.message });
+    }
+  });
+}
+
+// 打开外部服务目录
+function openExternalFolder(item) {
+  return new Promise((resolve) => {
+    const dir = item.path;
+    if (!dir || !fs.existsSync(dir)) {
+      return resolve({ ok: false, error: '目录不存在: ' + (dir || '(空)') });
+    }
+    try {
+      const child = spawn('explorer.exe', [dir], { detached: true, stdio: 'ignore' });
+      child.on('error', (err) => resolve({ ok: false, error: err.message }));
+      child.unref();
+      resolve({ ok: true, message: '已请求打开文件夹' });
+    } catch (err) {
+      resolve({ ok: false, error: err.message });
+    }
+  });
 }
 
 /* ---------------- 静态文件服务 ---------------- */
@@ -502,6 +643,115 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const result = saveServiceConfig(service, body);
+    sendJson(res, result, result.ok ? 200 : 500);
+    return;
+  }
+
+  /* ---------- 外部服务（项目配置面板） ---------- */
+
+  // 外部服务列表（含状态探测）
+  if (pathname === '/api/external-services' && req.method === 'GET') {
+    const list = await getExternalServicesWithStatus();
+    sendJson(res, { count: list.length, services: list });
+    return;
+  }
+
+  // 新增外部服务
+  if (pathname === '/api/external-services' && req.method === 'POST') {
+    let body;
+    try {
+      body = await readJsonBody(req);
+    } catch (err) {
+      sendJson(res, { ok: false, error: err.message }, 400);
+      return;
+    }
+    const name = (body.name || '').trim();
+    const p = (body.path || '').trim();
+    if (!name) { sendJson(res, { ok: false, error: '名称不能为空' }, 400); return; }
+    if (!p) { sendJson(res, { ok: false, error: '路径不能为空' }, 400); return; }
+    const list = readExternalServices();
+    const item = {
+      id: genId(),
+      name,
+      description: (body.description || '').trim(),
+      icon: (body.icon || '📦').trim() || '📦',
+      path: p,
+      startScript: (body.startScript || 'start.bat').trim() || 'start.bat',
+      url: (body.url || '').trim(),
+    };
+    list.push(item);
+    if (!saveExternalServices(list)) {
+      sendJson(res, { ok: false, error: '写入配置文件失败' }, 500);
+      return;
+    }
+    sendJson(res, { ok: true, id: item.id });
+    return;
+  }
+
+  // 修改外部服务：PUT /api/external-services/<id>
+  const extPutMatch = pathname.match(/^\/api\/external-services\/([^/]+)$/);
+  if (extPutMatch && req.method === 'PUT') {
+    const id = extPutMatch[1];
+    let body;
+    try {
+      body = await readJsonBody(req);
+    } catch (err) {
+      sendJson(res, { ok: false, error: err.message }, 400);
+      return;
+    }
+    const list = readExternalServices();
+    const item = list.find(s => s.id === id);
+    if (!item) { sendJson(res, { ok: false, error: '配置不存在' }, 404); return; }
+    if (typeof body.name === 'string') item.name = body.name.trim();
+    if (typeof body.description === 'string') item.description = body.description.trim();
+    if (typeof body.icon === 'string') item.icon = body.icon.trim() || '📦';
+    if (typeof body.path === 'string') item.path = body.path.trim();
+    if (typeof body.startScript === 'string') item.startScript = body.startScript.trim() || 'start.bat';
+    if (typeof body.url === 'string') item.url = body.url.trim();
+    if (!saveExternalServices(list)) {
+      sendJson(res, { ok: false, error: '写入配置文件失败' }, 500);
+      return;
+    }
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  // 删除外部服务：DELETE /api/external-services/<id>
+  const extDelMatch = pathname.match(/^\/api\/external-services\/([^/]+)$/);
+  if (extDelMatch && req.method === 'DELETE') {
+    const id = extDelMatch[1];
+    const list = readExternalServices();
+    const idx = list.findIndex(s => s.id === id);
+    if (idx < 0) { sendJson(res, { ok: false, error: '配置不存在' }, 404); return; }
+    list.splice(idx, 1);
+    if (!saveExternalServices(list)) {
+      sendJson(res, { ok: false, error: '写入配置文件失败' }, 500);
+      return;
+    }
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  // 启动外部服务：POST /api/external-services/<id>/start
+  const extStartMatch = pathname.match(/^\/api\/external-services\/([^/]+)\/start$/);
+  if (extStartMatch && req.method === 'POST') {
+    const id = extStartMatch[1];
+    const list = readExternalServices();
+    const item = list.find(s => s.id === id);
+    if (!item) { sendJson(res, { ok: false, error: '配置不存在' }, 404); return; }
+    const result = await startExternalService(item);
+    sendJson(res, result, result.ok ? 200 : 500);
+    return;
+  }
+
+  // 打开外部服务目录：POST /api/external-services/<id>/open-folder
+  const extFolderMatch = pathname.match(/^\/api\/external-services\/([^/]+)\/open-folder$/);
+  if (extFolderMatch && req.method === 'POST') {
+    const id = extFolderMatch[1];
+    const list = readExternalServices();
+    const item = list.find(s => s.id === id);
+    if (!item) { sendJson(res, { ok: false, error: '配置不存在' }, 404); return; }
+    const result = await openExternalFolder(item);
     sendJson(res, result, result.ok ? 200 : 500);
     return;
   }

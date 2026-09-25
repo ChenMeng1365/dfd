@@ -255,6 +255,111 @@
   .modal-msg.err { color: var(--danger); }
   .modal-msg.ok { color: var(--ok); }
 
+  /* ---------- 项目配置面板 ---------- */
+  .config-panel-mask {
+    position: fixed; inset: 0; z-index: 110;
+    background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center;
+  }
+  .config-panel-mask.open { display: flex; }
+  .config-panel {
+    width: min(820px, 94vw);
+    max-height: 88vh;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex; flex-direction: column;
+    box-shadow: var(--shadow);
+  }
+  .config-panel-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  .config-panel-head h3 { font-size: 16px; }
+  .config-panel-head .close-btn {
+    margin-left: auto; background: none; border: none;
+    color: var(--text-dim); font-size: 20px; cursor: pointer;
+    padding: 4px 8px; border-radius: 6px;
+  }
+  .config-panel-head .close-btn:hover { color: var(--text); background: var(--bg-soft); }
+  .config-panel-body {
+    padding: 18px 22px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .config-panel-foot {
+    padding: 14px 22px;
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 10px;
+  }
+
+  /* 配置卡片特殊样式 */
+  .svc-card.config-card {
+    border-color: rgba(79,140,255,0.4);
+    background: linear-gradient(135deg, rgba(79,140,255,0.08), var(--card));
+    cursor: pointer;
+  }
+  .svc-card.config-card:hover {
+    border-color: var(--accent);
+    background: linear-gradient(135deg, rgba(79,140,255,0.15), var(--card-hover));
+  }
+  .config-badge {
+    margin-left: auto;
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .ext-badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: rgba(224,163,60,0.15); color: var(--warn);
+    border: 1px solid rgba(224,163,60,0.3);
+    margin-left: 8px; vertical-align: middle; white-space: nowrap;
+  }
+
+  /* 外部项目列表 */
+  .ext-list { display: flex; flex-direction: column; gap: 10px; }
+  .ext-item {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: var(--bg-soft);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .ext-item-head { display: flex; align-items: center; gap: 10px; }
+  .ext-item-name { font-size: 15px; font-weight: 600; }
+  .ext-item-meta { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+  .ext-item-meta code { background: var(--card); padding: 1px 6px; border-radius: 4px; color: var(--accent); }
+  .ext-item-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ext-empty {
+    text-align: center; padding: 30px 20px;
+    color: var(--text-dim);
+    border: 1px dashed var(--border); border-radius: 10px;
+  }
+
+  /* 外部项目编辑表单 */
+  .ext-form {
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 14px;
+    background: rgba(79,140,255,0.05);
+    display: none;
+  }
+  .ext-form.open { display: block; }
+  .ext-form h4 { font-size: 14px; margin-bottom: 12px; }
+  .ext-form-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .ext-form-row > div { flex: 1; min-width: 200px; }
+  .ext-form label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .ext-form input[type="text"] {
+    width: 100%; padding: 7px 10px;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-soft); color: var(--text); font-size: 13px; outline: none;
+  }
+  .ext-form input[type="text"]:focus { border-color: var(--accent); }
+  .ext-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  .ext-form-msg { font-size: 12px; margin-top: 6px; min-height: 14px; color: var(--danger); }
+  .ext-form-msg.ok { color: var(--ok); }
+
   /* 加载提示 */
   .loading {
     display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -322,6 +427,62 @@
     <div class="modal-actions">
       <button class="modal-btn" id="cfg-cancel">取消</button>
       <button class="modal-btn primary" id="cfg-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 项目配置面板 -->
+<div class="config-panel-mask" id="config-panel-mask">
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <h3>🎛️ 项目配置</h3>
+      <button class="close-btn" id="cp-close">✕</button>
+    </div>
+    <div class="config-panel-body">
+      <div class="ext-form" id="ext-form">
+        <h4 id="ext-form-title">新增外部项目</h4>
+        <div class="ext-form-row">
+          <div>
+            <label>显示名称 *</label>
+            <input type="text" id="ext-name" placeholder="如：我的项目">
+          </div>
+          <div style="flex:0 0 80px;">
+            <label>图标</label>
+            <input type="text" id="ext-icon" placeholder="📦" maxlength="4">
+          </div>
+        </div>
+        <div class="ext-form-row">
+          <div>
+            <label>项目路径 *</label>
+            <input type="text" id="ext-path" placeholder="E:\workspace\my-project">
+          </div>
+          <div style="flex:0 0 160px;">
+            <label>启动脚本</label>
+            <input type="text" id="ext-script" placeholder="start.bat">
+          </div>
+        </div>
+        <div class="ext-form-row">
+          <div>
+            <label>首页地址（用于探测状态）</label>
+            <input type="text" id="ext-url" placeholder="http://127.0.0.1:3000/">
+          </div>
+        </div>
+        <div class="ext-form-row">
+          <div>
+            <label>描述</label>
+            <input type="text" id="ext-desc" placeholder="项目描述（可选）">
+          </div>
+        </div>
+        <div class="ext-form-msg" id="ext-form-msg"></div>
+        <div class="ext-form-actions">
+          <button class="modal-btn" id="ext-form-cancel">取消</button>
+          <button class="modal-btn primary" id="ext-form-save">保存</button>
+        </div>
+      </div>
+      <div class="ext-list" id="ext-list"></div>
+    </div>
+    <div class="config-panel-foot">
+      <button class="modal-btn primary" id="cp-add">+ 新增项目</button>
     </div>
   </div>
 </div>
@@ -447,31 +608,92 @@ function renderServices() {
     return;
   }
 
-  svcGrid.innerHTML = services.map(s => `
+  svcGrid.innerHTML = services.map(s => {
+    // 虚拟「项目配置」服务：特殊卡片
+    if (s.isConfig) {
+      return `
+      <div class="svc-card config-card" data-act="open-config-panel" data-name="${escapeHtml(s.name)}">
+        <div class="svc-head">
+          <div class="card-icon">${iconHtml(s.icon)}</div>
+          <div class="svc-name">${escapeHtml(s.title)}</div>
+          <span class="config-badge">外部项目</span>
+        </div>
+        <div class="svc-desc">${escapeHtml(s.description || '管理 dfd 项目外的服务启动配置')}</div>
+        ${svcStatusHtml(s)}
+        <div class="svc-url">点击打开配置面板</div>
+        <div class="svc-actions">
+          <button class="svc-btn primary" data-act="open-config-panel" data-name="${escapeHtml(s.name)}" title="打开配置面板">⚙ 打开配置面板</button>
+        </div>
+      </div>`;
+    }
+    return `
     <div class="svc-card">
       <div class="svc-head">
         <div class="card-icon">${iconHtml(s.icon)}</div>
-        <div class="svc-name">${escapeHtml(s.title)}</div>
+        <div class="svc-name">${escapeHtml(s.title)}${s.isExternal ? '<span class="ext-badge">外部服务</span>' : ''}</div>
       </div>
       <div class="svc-desc">${escapeHtml(s.description || '')}</div>
       ${svcStatusHtml(s)}
       <div class="svc-url" title="${escapeHtml(s.url || '')}">${escapeHtml(s.url || '未配置首页地址')}</div>
       <div class="svc-actions">
         <button class="svc-btn ${s.status && s.status.online ? 'online' : ''}" data-act="open" data-name="${escapeHtml(s.name)}" ${s.url ? `data-url="${escapeHtml(s.url)}"` : 'disabled title="未配置首页地址"'} title="打开">↗</button>
-        <button class="svc-btn" data-act="open-folder" data-name="${escapeHtml(s.name)}" title="打开文件夹">📂</button>
-        <button class="svc-btn primary" data-act="start" data-name="${escapeHtml(s.name)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'} title="启动">▶</button>
-        <button class="svc-btn" data-act="config" data-name="${escapeHtml(s.name)}" title="配置">⚙</button>
+        ${s.isExternal
+          ? `<button class="svc-btn" data-act="open-folder-ext" data-ext-id="${escapeHtml(s.extId)}" title="打开文件夹">📂</button>
+             <button class="svc-btn primary" data-act="start-ext" data-ext-id="${escapeHtml(s.extId)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'} title="启动">▶</button>
+             <button class="svc-btn" data-act="edit-ext" data-ext-id="${escapeHtml(s.extId)}" title="编辑">✏</button>`
+          : `<button class="svc-btn" data-act="open-folder" data-name="${escapeHtml(s.name)}" title="打开文件夹">📂</button>
+             <button class="svc-btn primary" data-act="start" data-name="${escapeHtml(s.name)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'} title="启动">▶</button>
+             <button class="svc-btn" data-act="config" data-name="${escapeHtml(s.name)}" title="配置">⚙</button>`
+        }
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 svcGrid.addEventListener('click', async e => {
   const btn = e.target.closest('[data-act]');
   if (!btn) return;
+
+  // ---- 外部服务操作（使用 extId，需在 svc 查找之前处理）----
+  if (btn.dataset.act === 'start-ext') {
+    const extId = btn.dataset.extId;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    try {
+      await api(`/api/external-services/${encodeURIComponent(extId)}/start`, { method: 'POST' });
+      btn.textContent = '✔';
+      await probeServices();
+    } catch (err) {
+      btn.textContent = '✖';
+      alert('启动失败：' + err.message);
+    }
+    setTimeout(() => { btn.disabled = false; btn.textContent = '▶'; }, 1500);
+    return;
+  }
+  if (btn.dataset.act === 'open-folder-ext') {
+    const extId = btn.dataset.extId;
+    try {
+      const res = await api(`/api/external-services/${encodeURIComponent(extId)}/open-folder`, { method: 'POST' });
+      if (!res.ok) alert('打开文件夹失败：' + (res.error || '未知错误'));
+    } catch (err) {
+      alert('打开文件夹失败：' + err.message);
+    }
+    return;
+  }
+  if (btn.dataset.act === 'edit-ext') {
+    openConfigPanel(btn.dataset.extId);
+    return;
+  }
+
+  // ---- 常规服务操作 ----
   const name = btn.dataset.name;
   const svc = services.find(s => s.name === name);
   if (!svc) return;
 
+  if (btn.dataset.act === 'open-config-panel') {
+    openConfigPanel();
+    return;
+  }
   if (btn.dataset.act === 'config') {
     openConfig(svc);
     return;
@@ -568,6 +790,180 @@ document.getElementById('cfg-save').addEventListener('click', async () => {
   } catch (err) {
     cfgMsg.textContent = '保存失败：' + err.message;
     cfgMsg.className = 'modal-msg err';
+  }
+});
+
+/* ---------- 项目配置面板（外部服务管理） ---------- */
+const configPanelMask = document.getElementById('config-panel-mask');
+const extListEl = document.getElementById('ext-list');
+const extForm = document.getElementById('ext-form');
+const extFormTitle = document.getElementById('ext-form-title');
+const extFormMsg = document.getElementById('ext-form-msg');
+let extServices = [];
+let editingExtId = null;
+
+async function openConfigPanel(editExtId) {
+  configPanelMask.classList.add('open');
+  await loadExtServices();
+  if (editExtId) {
+    const item = extServices.find(s => s.id === editExtId);
+    if (item) openExtForm(item);
+  }
+}
+
+function closeConfigPanel() {
+  configPanelMask.classList.remove('open');
+  closeExtForm();
+}
+
+function closeExtForm() {
+  extForm.classList.remove('open');
+  editingExtId = null;
+  extFormMsg.textContent = '';
+  extFormMsg.className = 'ext-form-msg';
+  document.getElementById('ext-name').value = '';
+  document.getElementById('ext-icon').value = '';
+  document.getElementById('ext-path').value = '';
+  document.getElementById('ext-script').value = 'start.bat';
+  document.getElementById('ext-url').value = '';
+  document.getElementById('ext-desc').value = '';
+}
+
+async function loadExtServices() {
+  extListEl.innerHTML = `<div class="loading"><span class="spinner"></span>加载中…</div>`;
+  try {
+    const data = await api('/api/external-services');
+    extServices = data.services || [];
+    renderExtList();
+  } catch (err) {
+    extListEl.innerHTML = `<div class="ext-empty">⚠️ 加载失败：${escapeHtml(String(err.message || err))}</div>`;
+  }
+}
+
+function renderExtList() {
+  if (!extServices.length) {
+    extListEl.innerHTML = `<div class="ext-empty">暂无外部项目配置<br>点击下方「+ 新增项目」添加</div>`;
+    return;
+  }
+  extListEl.innerHTML = extServices.map(s => {
+    const st = s.status || {};
+    let dot, stText;
+    if (!s.url) { dot = 'unknown'; stText = '未配置地址'; }
+    else if (st.online) { dot = 'online'; stText = `在线 · ${st.latencyMs}ms`; }
+    else { dot = 'offline'; stText = `离线 · ${st.error || ''}`; }
+    return `
+    <div class="ext-item">
+      <div class="ext-item-head">
+        <span style="font-size:20px;">${escapeHtml(s.icon || '📦')}</span>
+        <span class="ext-item-name">${escapeHtml(s.name)}</span>
+        <span class="status-dot ${dot}" style="margin-left:auto;"></span>
+        <span class="status-text ${dot}" style="font-size:12px;">${escapeHtml(stText)}</span>
+      </div>
+      <div class="ext-item-meta">
+        路径: <code>${escapeHtml(s.path)}</code><br>
+        启动脚本: <code>${escapeHtml(s.startScript)}</code>${s.url ? `<br>首页: <code>${escapeHtml(s.url)}</code>` : ''}
+        ${s.description ? `<br>${escapeHtml(s.description)}` : ''}
+      </div>
+      <div class="ext-item-actions">
+        <button class="svc-btn primary" data-ext-act="start" data-id="${escapeHtml(s.id)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'}>▶ 启动</button>
+        <button class="svc-btn" data-ext-act="open-folder" data-id="${escapeHtml(s.id)}">📂 目录</button>
+        <button class="svc-btn" data-ext-act="edit" data-id="${escapeHtml(s.id)}">✏ 编辑</button>
+        <button class="svc-btn" data-ext-act="delete" data-id="${escapeHtml(s.id)}" style="color:var(--danger);border-color:rgba(224,82,82,0.3);">🗑 删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+extListEl.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-ext-act]');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const act = btn.dataset.extAct;
+  const item = extServices.find(s => s.id === id);
+  if (!item) return;
+
+  if (act === 'start') {
+    btn.disabled = true;
+    btn.textContent = '⏳ 启动中…';
+    try {
+      await api(`/api/external-services/${encodeURIComponent(id)}/start`, { method: 'POST' });
+      btn.textContent = '✔ 已发送';
+      await loadExtServices();
+    } catch (err) {
+      btn.textContent = '✖ 失败';
+      alert('启动失败：' + err.message);
+    }
+    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 启动'; }, 2000);
+    return;
+  }
+  if (act === 'open-folder') {
+    try {
+      const res = await api(`/api/external-services/${encodeURIComponent(id)}/open-folder`, { method: 'POST' });
+      if (!res.ok) alert('打开目录失败：' + (res.error || '未知错误'));
+    } catch (err) { alert('打开目录失败：' + err.message); }
+    return;
+  }
+  if (act === 'edit') { openExtForm(item); return; }
+  if (act === 'delete') {
+    if (!confirm(`确认删除「${item.name}」的配置？\n（不会删除实际项目文件，仅删除此处的启动配置）`)) return;
+    try {
+      await api(`/api/external-services/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await loadExtServices();
+      await probeServices();
+    } catch (err) { alert('删除失败：' + err.message); }
+    return;
+  }
+});
+
+function openExtForm(item) {
+  editingExtId = item ? item.id : null;
+  extFormTitle.textContent = item ? '编辑外部项目' : '新增外部项目';
+  document.getElementById('ext-name').value = item ? item.name : '';
+  document.getElementById('ext-icon').value = item ? (item.icon || '') : '';
+  document.getElementById('ext-path').value = item ? item.path : '';
+  document.getElementById('ext-script').value = item ? (item.startScript || 'start.bat') : 'start.bat';
+  document.getElementById('ext-url').value = item ? (item.url || '') : '';
+  document.getElementById('ext-desc').value = item ? (item.description || '') : '';
+  extFormMsg.textContent = '';
+  extFormMsg.className = 'ext-form-msg';
+  extForm.classList.add('open');
+  document.getElementById('ext-name').focus();
+}
+
+document.getElementById('cp-add').addEventListener('click', () => openExtForm(null));
+document.getElementById('ext-form-cancel').addEventListener('click', closeExtForm);
+document.getElementById('cp-close').addEventListener('click', closeConfigPanel);
+configPanelMask.addEventListener('click', e => { if (e.target === configPanelMask) closeConfigPanel(); });
+
+document.getElementById('ext-form-save').addEventListener('click', async () => {
+  const name = document.getElementById('ext-name').value.trim();
+  const p = document.getElementById('ext-path').value.trim();
+  if (!name) { extFormMsg.textContent = '名称不能为空'; return; }
+  if (!p) { extFormMsg.textContent = '路径不能为空'; return; }
+  const payload = {
+    name,
+    icon: document.getElementById('ext-icon').value.trim() || '📦',
+    path: p,
+    startScript: document.getElementById('ext-script').value.trim() || 'start.bat',
+    url: document.getElementById('ext-url').value.trim(),
+    description: document.getElementById('ext-desc').value.trim(),
+  };
+  extFormMsg.textContent = '保存中…';
+  try {
+    if (editingExtId) {
+      await api(`/api/external-services/${encodeURIComponent(editingExtId)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+    } else {
+      await api('/api/external-services', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+    }
+    closeExtForm();
+    await loadExtServices();
+    await probeServices();
+  } catch (err) {
+    extFormMsg.textContent = '保存失败：' + err.message;
   }
 });
 

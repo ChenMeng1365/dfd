@@ -141,3 +141,16 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# dfd 外部服务配置（本地路径，因机器而异）
+external-services.json
+
+# 测试/调试临时产物（开发验证残留，勿提交）
+test.bat
+test*.vbs
+pingtest.vbs
+vbs_*.txt
+marker.txt
+proc.txt
+verify.txt
+watch.txt
