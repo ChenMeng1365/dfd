@@ -17,13 +17,15 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 
 const ROOT = __dirname;
 const PROJECTS_DIR = path.join(ROOT, 'projects');
 const SERVICES_DIR = path.join(ROOT, 'services');
 const INDEX_FILE = path.join(ROOT, 'index.html');
 const EXTERNAL_SERVICES_FILE = path.join(ROOT, 'external-services.json');
+const RUNTIME_DIR = path.join(ROOT, 'runtime');                  // 内联脚本启动器与日志目录
+const RUNTIME_STATE_FILE = path.join(ROOT, 'runtime-state.json'); // 内联脚本运行进程记录
 const HOST = '127.0.0.1';
 const DEFAULT_PORT = 8080;
 
@@ -323,11 +325,15 @@ async function getServicesWithStatus() {
   });
 
   // 追加外部服务（项目配置面板中配置的服务）到服务列表
+  const extState = readRuntimeState();
   const extResults = await Promise.all(extList.map(async (item) => {
     const status = await checkUrl(item.url, 2500);
-    const startExists = item.path && item.startScript
-      ? fs.existsSync(path.join(item.path, item.startScript))
-      : false;
+    const hasScript = !!(item.script && String(item.script).trim());
+    const running = hasScript && extState[item.id] ? isPidAlive(extState[item.id].pid) : false;
+    const startExists = hasScript
+      || (item.path && item.startScript
+        ? fs.existsSync(path.join(item.path, item.startScript))
+        : false);
     return {
       name: 'ext:' + item.id,          // 带前缀避免与 services/ 目录名称冲突
       extId: item.id,                  // 原始 id，前端用于调用外部服务 API
@@ -339,6 +345,8 @@ async function getServicesWithStatus() {
       urlInferred: false,
       startScript: item.startScript || '',
       startExists,
+      hasScript,
+      running,
       tags: [],
       isExternal: true,
       status,
@@ -450,11 +458,15 @@ function genId() {
 // 获取外部服务列表（含状态探测），不暴露内部 id 以外的敏感字段
 async function getExternalServicesWithStatus() {
   const list = readExternalServices();
+  const state = readRuntimeState();
   const results = await Promise.all(list.map(async (item) => {
     const status = await checkUrl(item.url, 2500);
-    const startExists = item.path && item.startScript
-      ? fs.existsSync(path.join(item.path, item.startScript))
-      : false;
+    const hasScript = !!(item.script && String(item.script).trim());
+    const running = hasScript && state[item.id] ? isPidAlive(state[item.id].pid) : false;
+    const startExists = hasScript
+      || (item.path && item.startScript
+        ? fs.existsSync(path.join(item.path, item.startScript))
+        : false);
     return {
       id: item.id,
       name: item.name || item.id,
@@ -462,6 +474,9 @@ async function getExternalServicesWithStatus() {
       icon: item.icon || '📦',
       path: item.path || '',
       startScript: item.startScript || '',
+      script: item.script || '',
+      hasScript,
+      running,
       url: item.url || '',
       startExists,
       status,
@@ -470,8 +485,209 @@ async function getExternalServicesWithStatus() {
   return results;
 }
 
-// 启动外部服务：在指定目录中运行启动脚本
+/* ---------------- 内联脚本模式：后台隐藏运行 + 可停止 ---------------- */
+
+// 运行进程记录格式：{ "<extId>": { pid, startedAt } }
+function readRuntimeState() {
+  try {
+    const data = JSON.parse(fs.readFileSync(RUNTIME_STATE_FILE, 'utf8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveRuntimeState(state) {
+  try {
+    fs.writeFileSync(RUNTIME_STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+  } catch (_) { /* 写入失败不阻断主流程 */ }
+}
+
+function isPidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; }
+  catch (err) { return err.code === 'EPERM'; } // EPERM 表示进程存在但无权限
+}
+
+function sanitizeId(id) {
+  return String(id || '').replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+// 生成启动器与用户脚本（均写入 runtime/）：
+//   runtime/<id>.bat        启动器：内部 call + 重定向，把全部输出收集到 runtime/<id>.log
+//   runtime/<id>.inner.bat  用户脚本：可选 chcp 头 + 时间戳头 + 原样脚本（UTF-8 无 BOM，CRLF）
+function writeLauncherBat(item) {
+  fs.mkdirSync(RUNTIME_DIR, { recursive: true });
+  const id = sanitizeId(item.id);
+  const launcher = path.join(RUNTIME_DIR, id + '.bat');
+  const inner = path.join(RUNTIME_DIR, id + '.inner.bat');
+  const logFile = path.join(RUNTIME_DIR, id + '.log');
+
+  let userScript = String(item.script || '')
+    .replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n/g, '\r\n'); // 统一 CRLF（cmd 对 LF 脚本的 goto/label 兼容性差）
+  let header = `echo ===== dfd background start [${id}] %date% %time% =====\r\n`;
+  if (/[^\x00-\x7f]/.test(userScript)) {
+    header = '@chcp 65001 >nul\r\n' + header; // 含中文时切换控制台代码页，避免乱码
+  }
+  fs.writeFileSync(inner, header + userScript, 'utf8'); // UTF-8 无 BOM
+
+  // 输出重定向由启动器内部完成（与项目 start-hidden.vbs 同款机制）。
+  // 注：不能改为在 Node 侧用 stdio fd 传递日志句柄 —— detached cmd 的孙进程句柄会丢失。
+  fs.writeFileSync(launcher, `@call "${inner}" >> "${logFile}" 2>&1\r\n`, 'utf8');
+
+  return { launcher, inner, logFile };
+}
+
+// 隐藏运行：CREATE_NO_WINDOW 后台执行启动器，stdout/stderr 全部落盘 runtime/<id>.log
+async function startExternalScript(item) {
+  if (!item.path) return { ok: false, error: '未配置项目路径' };
+  if (!fs.existsSync(item.path)) return { ok: false, error: '目录不存在: ' + item.path };
+
+  // 防重复启动：同一项目已有存活且归属校验通过的托管进程时拒绝再次启动
+  const preState = readRuntimeState();
+  const pre = preState[item.id];
+  if (pre && isPidAlive(pre.pid)) {
+    const owned = await verifyLauncherPid(pre.pid, item.id);
+    if (owned) return { ok: false, error: `服务已在运行（PID ${pre.pid}），请先停止` };
+  }
+
+  let launcherFile;
+  try { launcherFile = writeLauncherBat(item).launcher; }
+  catch (err) { return { ok: false, error: '生成启动脚本失败: ' + err.message }; }
+
+  let child;
+  try {
+    // CREATE_NO_WINDOW：命令行后台隐藏运行，不弹窗。
+    // 注意：不能用 detached:true —— Windows 上 detached cmd 启动的孙进程 stdout 句柄会丢失；
+    // 且 Windows 子进程默认不随父进程退出而终止（独立隐藏控制台，不接收父进程 Ctrl+C），
+    // 因此去掉 detached 不影响“dfd 退出/重启后服务继续运行”。
+    child = spawn('cmd.exe', ['/c', launcherFile], {
+      cwd: item.path,          // 在项目路径下执行
+      stdio: 'ignore',        // 输出由启动器内部重定向收集到 runtime/<id>.log
+      windowsHide: true,      // CREATE_NO_WINDOW：无窗口
+    });
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+
+  // 异步失败（如 cmd.exe 无法创建）：清除刚写入的运行记录
+  child.once('error', () => {
+    const state = readRuntimeState();
+    delete state[item.id];
+    saveRuntimeState(state);
+  });
+  child.unref();
+
+  const state = readRuntimeState();
+  state[item.id] = { pid: child.pid, startedAt: new Date().toISOString() };
+  saveRuntimeState(state);
+  return {
+    ok: true,
+    pid: child.pid,
+    message: `已在后台启动（PID ${child.pid}），输出记录于 runtime/${sanitizeId(item.id)}.log`,
+  };
+}
+
+// 校验 PID 对应进程的命令行包含本项目的启动器（防止 PID 复用误杀无关进程）
+function verifyLauncherPid(pid, extId) {
+  return new Promise((resolve) => {
+    if (!Number.isInteger(pid)) return resolve(false);
+    const batName = (sanitizeId(extId) + '.bat').toLowerCase();
+    execFile('powershell.exe',
+      ['-NoProfile', '-Command', `(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine`],
+      { timeout: 10000, windowsHide: true },
+      (err, stdout) => {
+        if (err) return resolve(false);
+        const cmdline = String(stdout || '').trim().toLowerCase();
+        if (!cmdline) return resolve(false);
+        resolve(cmdline.includes(batName));
+      });
+  });
+}
+
+// 按进程树终止（taskkill /T 连同子进程一并结束，服务进程是 cmd 的子进程）
+function killTree(pid) {
+  return new Promise((resolve) => {
+    if (!Number.isInteger(pid)) return resolve({ ok: false, out: '' });
+    execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'],
+      { timeout: 20000, windowsHide: true },
+      (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || stderr || '').trim() }));
+  });
+}
+
+// 兜底：终止监听指定端口的进程（启动器已退出/服务自行启动时使用，与 stop.bat 同模式）
+function killByPort(port) {
+  return new Promise((resolve) => {
+    if (!Number.isInteger(port)) return resolve([]);
+    const ps = [
+      `$conns = Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue`,
+      'if (-not $conns) { exit 0 }',
+      '$owners = $conns | Select-Object -ExpandProperty OwningProcess -Unique',
+      'foreach ($owner in $owners) { & taskkill.exe /PID $owner /T /F 2>$null | Out-Null; Write-Output $owner }',
+    ].join('; ');
+    execFile('powershell.exe', ['-NoProfile', '-Command', ps],
+      { timeout: 20000, windowsHide: true },
+      (err, stdout) => {
+        const outText = String(stdout || '').trim();
+        resolve(outText
+          ? outText.split(/\r?\n/).map(s => parseInt(s, 10)).filter(n => Number.isInteger(n))
+          : []);
+      });
+  });
+}
+
+// 从首页地址提取端口（标准端口无显式 port 时按协议补默认）
+function extractPort(url) {
+  try {
+    const u = new URL(url || '');
+    const p = parseInt(u.port, 10);
+    if (Number.isInteger(p) && p > 0) return p;
+    if (u.protocol === 'http:') return 80;
+    if (u.protocol === 'https:') return 443;
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// 停止内联脚本服务：
+//   1) 优先按启动记录的 PID（校验命令行归属后按进程树终止）
+//   2) 兜底按首页地址端口终止监听进程（opts.byPort=false 时跳过，用于删除配置等保守场景）
+async function stopExternalService(item, opts) {
+  const byPort = !opts || opts.byPort !== false;
+  const state = readRuntimeState();
+  const rec = state[item.id];
+  const killed = [];
+
+  if (rec && isPidAlive(rec.pid)) {
+    const owned = await verifyLauncherPid(rec.pid, item.id);
+    if (owned) {
+      const r = await killTree(rec.pid);
+      if (r.ok) killed.push(rec.pid);
+    }
+  }
+
+  if (!killed.length && byPort) {
+    const port = extractPort(item.url);
+    if (port) killed.push(...(await killByPort(port)));
+  }
+
+  if (rec) {
+    delete state[item.id];
+    saveRuntimeState(state);
+  }
+
+  if (killed.length) {
+    return { ok: true, message: '已停止进程 PID: ' + killed.join(', '), killed };
+  }
+  return { ok: false, error: '未发现运行中的进程（服务可能未启动或已自行退出）' };
+}
+
+// 启动外部服务：配置了可执行脚本则后台隐藏运行（可停止）；否则在指定目录新开窗口运行启动脚本
 function startExternalService(item) {
+  if (item.script && String(item.script).trim()) {
+    return startExternalScript(item);
+  }
   return new Promise((resolve) => {
     if (!item.path || !item.startScript) {
       return resolve({ ok: false, error: '未配置路径或启动脚本' });
@@ -677,6 +893,7 @@ const server = http.createServer(async (req, res) => {
       icon: (body.icon || '📦').trim() || '📦',
       path: p,
       startScript: (body.startScript || 'start.bat').trim() || 'start.bat',
+      script: typeof body.script === 'string' ? body.script : '',
       url: (body.url || '').trim(),
     };
     list.push(item);
@@ -707,6 +924,7 @@ const server = http.createServer(async (req, res) => {
     if (typeof body.icon === 'string') item.icon = body.icon.trim() || '📦';
     if (typeof body.path === 'string') item.path = body.path.trim();
     if (typeof body.startScript === 'string') item.startScript = body.startScript.trim() || 'start.bat';
+    if (typeof body.script === 'string') item.script = body.script; // 保留原样（含缩进换行）
     if (typeof body.url === 'string') item.url = body.url.trim();
     if (!saveExternalServices(list)) {
       sendJson(res, { ok: false, error: '写入配置文件失败' }, 500);
@@ -723,12 +941,19 @@ const server = http.createServer(async (req, res) => {
     const list = readExternalServices();
     const idx = list.findIndex(s => s.id === id);
     if (idx < 0) { sendJson(res, { ok: false, error: '配置不存在' }, 404); return; }
+    const item = list[idx];
+    // 先停止由门户托管的运行进程（保守：仅杀有记录且归属校验通过的 PID，不做端口兜底，避免误杀手动启动的服务）
+    const stopResult = await stopExternalService(item, { byPort: false });
+    // 清理该项目的启动器、用户脚本与日志文件
+    for (const suffix of ['.bat', '.inner.bat', '.log']) {
+      try { fs.unlinkSync(path.join(RUNTIME_DIR, sanitizeId(id) + suffix)); } catch (_) { /* 不存在则忽略 */ }
+    }
     list.splice(idx, 1);
     if (!saveExternalServices(list)) {
       sendJson(res, { ok: false, error: '写入配置文件失败' }, 500);
       return;
     }
-    sendJson(res, { ok: true });
+    sendJson(res, { ok: true, stopped: stopResult.ok ? stopResult.message : '' });
     return;
   }
 
@@ -740,6 +965,18 @@ const server = http.createServer(async (req, res) => {
     const item = list.find(s => s.id === id);
     if (!item) { sendJson(res, { ok: false, error: '配置不存在' }, 404); return; }
     const result = await startExternalService(item);
+    sendJson(res, result, result.ok ? 200 : 500);
+    return;
+  }
+
+  // 停止外部服务（终止其后台进程）：POST /api/external-services/<id>/stop
+  const extStopMatch = pathname.match(/^\/api\/external-services\/([^/]+)\/stop$/);
+  if (extStopMatch && req.method === 'POST') {
+    const id = extStopMatch[1];
+    const list = readExternalServices();
+    const item = list.find(s => s.id === id);
+    if (!item) { sendJson(res, { ok: false, error: '配置不存在' }, 404); return; }
+    const result = await stopExternalService(item);
     sendJson(res, result, result.ok ? 200 : 500);
     return;
   }

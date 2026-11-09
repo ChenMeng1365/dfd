@@ -356,6 +356,19 @@
     background: var(--bg-soft); color: var(--text); font-size: 13px; outline: none;
   }
   .ext-form input[type="text"]:focus { border-color: var(--accent); }
+  .ext-form textarea {
+    width: 100%; min-height: 130px; padding: 8px 10px;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-soft); color: var(--text);
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12.5px; line-height: 1.6; outline: none;
+    resize: vertical;
+  }
+  .ext-form textarea:focus { border-color: var(--accent); }
+  .form-hint { font-size: 12px; color: var(--text-dim); margin-top: 5px; line-height: 1.5; }
+  .svc-btn.danger { color: var(--danger); border-color: rgba(224,82,82,0.35); }
+  .svc-btn.danger:hover { background: rgba(224,82,82,0.12); border-color: rgba(224,82,82,0.55); }
+  .ext-badge.script { background: rgba(61,187,122,0.12); color: var(--ok); border: 1px solid rgba(61,187,122,0.3); }
   .ext-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
   .ext-form-msg { font-size: 12px; margin-top: 6px; min-height: 14px; color: var(--danger); }
   .ext-form-msg.ok { color: var(--ok); }
@@ -465,6 +478,19 @@
           <div>
             <label>首页地址（用于探测状态）</label>
             <input type="text" id="ext-url" placeholder="http://127.0.0.1:3000/">
+          </div>
+        </div>
+        <div class="ext-form-row">
+          <div>
+            <label>可执行脚本（可选 · 后台隐藏运行，支持停止）</label>
+            <textarea id="ext-inline-script" spellcheck="false" placeholder="例如：
+node server.js
+python app.py
+
+在上方「项目路径」下后台执行（无窗口），输出记录到 dfd/runtime/ 下日志；
+填写后卡片「▶ 启动」执行此脚本，并出现「⏹ 停止」按钮可终止进程；
+留空则按「启动脚本」方式在新窗口运行。"></textarea>
+            <div class="form-hint">多行命令将按批处理方式执行；服务请保持前台运行（勿用 start 另开进程），停止时优先按进程树终止，必要时按首页端口兑底。</div>
           </div>
         </div>
         <div class="ext-form-row">
@@ -639,7 +665,8 @@ function renderServices() {
         <button class="svc-btn ${s.status && s.status.online ? 'online' : ''}" data-act="open" data-name="${escapeHtml(s.name)}" ${s.url ? `data-url="${escapeHtml(s.url)}"` : 'disabled title="未配置首页地址"'} title="打开">↗</button>
         ${s.isExternal
           ? `<button class="svc-btn" data-act="open-folder-ext" data-ext-id="${escapeHtml(s.extId)}" title="打开文件夹">📂</button>
-             <button class="svc-btn primary" data-act="start-ext" data-ext-id="${escapeHtml(s.extId)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'} title="启动">▶</button>
+             <button class="svc-btn primary" data-act="start-ext" data-ext-id="${escapeHtml(s.extId)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'} title="${s.hasScript ? '后台隐藏执行内联脚本' : '运行启动脚本（新窗口）'}">▶</button>
+             ${s.hasScript ? `<button class="svc-btn danger" data-act="stop-ext" data-ext-id="${escapeHtml(s.extId)}" title="终止该脚本启动的后台进程">⏹</button>` : ''}
              <button class="svc-btn" data-act="edit-ext" data-ext-id="${escapeHtml(s.extId)}" title="编辑">✏</button>`
           : `<button class="svc-btn" data-act="open-folder" data-name="${escapeHtml(s.name)}" title="打开文件夹">📂</button>
              <button class="svc-btn primary" data-act="start" data-name="${escapeHtml(s.name)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'} title="启动">▶</button>
@@ -668,6 +695,21 @@ svcGrid.addEventListener('click', async e => {
       alert('启动失败：' + err.message);
     }
     setTimeout(() => { btn.disabled = false; btn.textContent = '▶'; }, 1500);
+    return;
+  }
+  if (btn.dataset.act === 'stop-ext') {
+    const extId = btn.dataset.extId;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    try {
+      await api(`/api/external-services/${encodeURIComponent(extId)}/stop`, { method: 'POST' });
+      btn.textContent = '✔';
+      await probeServices();
+    } catch (err) {
+      btn.textContent = '✖';
+      alert('停止失败：' + err.message);
+    }
+    setTimeout(() => { btn.disabled = false; btn.textContent = '⏹'; }, 1500);
     return;
   }
   if (btn.dataset.act === 'open-folder-ext') {
@@ -826,6 +868,7 @@ function closeExtForm() {
   document.getElementById('ext-path').value = '';
   document.getElementById('ext-script').value = 'start.bat';
   document.getElementById('ext-url').value = '';
+  document.getElementById('ext-inline-script').value = '';
   document.getElementById('ext-desc').value = '';
 }
 
@@ -861,11 +904,15 @@ function renderExtList() {
       </div>
       <div class="ext-item-meta">
         路径: <code>${escapeHtml(s.path)}</code><br>
-        启动脚本: <code>${escapeHtml(s.startScript)}</code>${s.url ? `<br>首页: <code>${escapeHtml(s.url)}</code>` : ''}
+        ${s.hasScript
+          ? `可执行脚本: <code>内联 · 后台隐藏运行</code>${s.running ? ' <span class="ext-badge script">托管运行中</span>' : ''}`
+          : `启动脚本: <code>${escapeHtml(s.startScript)}</code>`}
+        ${s.url ? `<br>首页: <code>${escapeHtml(s.url)}</code>` : ''}
         ${s.description ? `<br>${escapeHtml(s.description)}` : ''}
       </div>
       <div class="ext-item-actions">
-        <button class="svc-btn primary" data-ext-act="start" data-id="${escapeHtml(s.id)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'}>▶ 启动</button>
+        <button class="svc-btn primary" data-ext-act="start" data-id="${escapeHtml(s.id)}" ${s.startExists ? '' : 'disabled title="缺少启动脚本"'} title="${s.hasScript ? '后台隐藏执行内联脚本' : '运行启动脚本（新窗口）'}">▶ 启动</button>
+        ${s.hasScript ? `<button class="svc-btn danger" data-ext-act="stop" data-id="${escapeHtml(s.id)}" title="终止该脚本启动的后台进程">⏹ 停止</button>` : ''}
         <button class="svc-btn" data-ext-act="open-folder" data-id="${escapeHtml(s.id)}">📂 目录</button>
         <button class="svc-btn" data-ext-act="edit" data-id="${escapeHtml(s.id)}">✏ 编辑</button>
         <button class="svc-btn" data-ext-act="delete" data-id="${escapeHtml(s.id)}" style="color:var(--danger);border-color:rgba(224,82,82,0.3);">🗑 删除</button>
@@ -896,6 +943,21 @@ extListEl.addEventListener('click', async e => {
     setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 启动'; }, 2000);
     return;
   }
+  if (act === 'stop') {
+    btn.disabled = true;
+    btn.textContent = '⏳ 停止中…';
+    try {
+      await api(`/api/external-services/${encodeURIComponent(id)}/stop`, { method: 'POST' });
+      btn.textContent = '✔ 已停止';
+    } catch (err) {
+      btn.textContent = '✖ 失败';
+      alert('停止失败：' + err.message);
+    }
+    await loadExtServices();
+    await probeServices();
+    setTimeout(() => { btn.disabled = false; btn.textContent = '⏹ 停止'; }, 2000);
+    return;
+  }
   if (act === 'open-folder') {
     try {
       const res = await api(`/api/external-services/${encodeURIComponent(id)}/open-folder`, { method: 'POST' });
@@ -923,6 +985,7 @@ function openExtForm(item) {
   document.getElementById('ext-path').value = item ? item.path : '';
   document.getElementById('ext-script').value = item ? (item.startScript || 'start.bat') : 'start.bat';
   document.getElementById('ext-url').value = item ? (item.url || '') : '';
+  document.getElementById('ext-inline-script').value = item ? (item.script || '') : '';
   document.getElementById('ext-desc').value = item ? (item.description || '') : '';
   extFormMsg.textContent = '';
   extFormMsg.className = 'ext-form-msg';
@@ -945,6 +1008,7 @@ document.getElementById('ext-form-save').addEventListener('click', async () => {
     icon: document.getElementById('ext-icon').value.trim() || '📦',
     path: p,
     startScript: document.getElementById('ext-script').value.trim() || 'start.bat',
+    script: document.getElementById('ext-inline-script').value,
     url: document.getElementById('ext-url').value.trim(),
     description: document.getElementById('ext-desc').value.trim(),
   };

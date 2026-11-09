@@ -145,6 +145,10 @@ vite.config.ts.timestamp-*
 # dfd 外部服务配置（本地路径，因机器而异）
 external-services.json
 
+# dfd 内联脚本运行时产物（启动器 bat / 日志 / 托管进程记录）
+runtime/
+runtime-state.json
+
 # 测试/调试临时产物（开发验证残留，勿提交）
 test.bat
 test*.vbs
